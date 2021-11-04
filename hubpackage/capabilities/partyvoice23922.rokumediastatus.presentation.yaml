@@ -1,0 +1,38 @@
+dashboard:
+  states: []
+  actions: []
+  basicPlus: []
+detailView:
+  - label: Media Player Status
+    displayType: state
+    state:
+      label: '{{mediaStatus.value}}'
+automation:
+  conditions:
+    - label: Media Player Status
+      displayType: list
+      list:
+        alternatives:
+          - key: none
+            value: none
+            type: inactive
+          - key: open
+            value: open
+            type: inactive
+          - key: close
+            value: close
+            type: inactive
+          - key: pause
+            value: pause
+            type: inactive
+          - key: play
+            value: play
+            type: active
+          - key: stop
+            value: stop
+            type: inactive
+        value: mediaStatus.value
+        valueType: string
+  actions: []
+id: partyvoice23922.rokumediastatus
+version: 1

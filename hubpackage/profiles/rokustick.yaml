@@ -1,0 +1,31 @@
+name: rokustick.v1.2
+components:
+- id: main
+  capabilities:
+    - id: partyvoice23922.rokupower
+      version: 1
+    - id: partyvoice23922.rokumediastatus
+      version: 1
+    - id: partyvoice23922.rokucurrentapp
+      version: 1
+    - id: partyvoice23922.rokukeys
+      version: 1
+    - id: mediaPresets
+      version: 1
+    - id: mediaPlayback
+      version: 1
+  categories:
+    - name: Television
+metadata:
+  vid: 1b9fa7f6-2d7d-3e84-85a9-090e6937f145
+  mnmn: SmartThingsCommunity
+  ocfDeviceType: oic.d.tv
+preferences:
+  - title: "Refresh Interval"
+    name: freq
+    description: Refresh interval in seconds
+    required: false
+    preferenceType: integer
+    definition:
+      minimum: 3
+      default: 20

@@ -1,0 +1,16 @@
+id: partyvoice23922.rokumediastatus
+version: 1
+status: proposed
+name: rokumediastatus
+attributes:
+  mediaStatus:
+    schema:
+      type: object
+      properties:
+        value:
+          type: string
+      additionalProperties: false
+      required:
+        - value
+    enumCommands: []
+commands: {}

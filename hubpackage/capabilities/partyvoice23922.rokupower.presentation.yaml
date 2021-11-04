@@ -1,0 +1,68 @@
+dashboard:
+  states:
+    - label: '{{powerSwitch.value}}'
+      alternatives: null
+  actions:
+    - displayType: toggleSwitch
+      toggleSwitch:
+        command:
+          'on': powerOn
+          'off': powerOff
+        state:
+          value: powerSwitch.value
+          'on': 'On'
+          'off': 'Off'
+          valueType: string
+  basicPlus: []
+detailView:
+  - label: Power
+    displayType: toggleSwitch
+    toggleSwitch:
+      command:
+        'on': powerOn
+        'off': powerOff
+      state:
+        value: powerSwitch.value
+        valueType: string
+        'on': 'On'
+        'off': 'Off'
+        label: '{{powerSwitch.value}}'
+        alternatives:
+          - key: 'On'
+            value: 'On'
+            type: active
+          - key: 'Off'
+            value: 'Off'
+            type: inactive
+    state: null
+automation:
+  conditions:
+    - label: Power
+      displayType: list
+      list:
+        alternatives:
+          - key: 'On'
+            value: 'On'
+            type: active
+          - key: 'Off'
+            value: 'Off'
+            type: inactive
+        value: powerSwitch.value
+        valueType: string
+      emphasis: true
+  actions:
+    - label: Power
+      displayType: list
+      list:
+        alternatives:
+          - key: 'On'
+            value: 'On'
+            type: active
+          - key: 'Off'
+            value: 'Off'
+            type: inactive
+        command: setPower
+        argumentType: string
+      emphasis: true
+id: partyvoice23922.rokupower
+version: 1

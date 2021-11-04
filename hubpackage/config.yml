@@ -1,0 +1,5 @@
+name: 'Roku Driver v0.1b'
+packageKey: 'roku_v0.1b'
+permissions:
+    lan: {}
+    discovery: {}

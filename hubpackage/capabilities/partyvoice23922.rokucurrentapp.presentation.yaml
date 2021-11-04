@@ -1,0 +1,19 @@
+dashboard:
+  states: []
+  actions: []
+  basicPlus: []
+detailView:
+  - label: Current Media App
+    displayType: state
+    state:
+      label: '{{currentApp.value}}'
+automation:
+  conditions:
+    - label: Current Media App
+      displayType: textField
+      textField:
+        value: currentApp.value
+        valueType: string
+  actions: []
+id: partyvoice23922.rokucurrentapp
+version: 1

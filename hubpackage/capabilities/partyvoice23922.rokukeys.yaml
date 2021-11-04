@@ -1,0 +1,26 @@
+id: partyvoice23922.rokukeys
+version: 1
+status: proposed
+name: rokukeys
+attributes:
+  rokuKey:
+    schema:
+      type: object
+      properties:
+        value:
+          type: string
+          maxLength: 20
+      additionalProperties: false
+      required:
+        - value
+    setter: selectKey
+    enumCommands: []
+commands:
+  selectKey:
+    name: selectKey
+    arguments:
+      - name: value
+        optional: false
+        schema:
+          type: string
+          maxLength: 20

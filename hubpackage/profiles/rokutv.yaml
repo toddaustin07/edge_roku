@@ -1,0 +1,33 @@
+name: rokuTV.v1.1
+components:
+- id: main
+  capabilities:
+    - id: partyvoice23922.rokupower
+      version: 1
+    - id: tV
+      version: 1
+    - id: partyvoice23922.rokutvkeys
+      version: 1
+    - id: partyvoice23922.rokumediastatus
+      version: 1
+    - id: partyvoice23922.rokucurrentapp
+      version: 1
+    - id: mediaPresets
+      version: 1
+    - id: mediaPlayback
+      version: 1
+  categories:
+    - name: Television
+metadata:
+  vid: 0094e640-62e6-366c-b902-a6469d133042
+  mnmn: SmartThingsCommunity
+  ocfDeviceType: oic.d.tv
+preferences:
+  - title: "Refresh Interval"
+    name: freq
+    description: Refresh interval in seconds
+    required: false
+    preferenceType: integer
+    definition:
+      minimum: 3
+      default: 20

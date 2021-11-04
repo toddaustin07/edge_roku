@@ -1,0 +1,208 @@
+dashboard:
+  states: []
+  actions: []
+  basicPlus: []
+detailView:
+  - label: Select a keypress
+    displayType: list
+    list:
+      command:
+        name: selectKey
+        alternatives:
+          - key: Home
+            value: Home
+            type: active
+          - key: Rev
+            value: Reverse
+            type: active
+          - key: Fwd
+            value: Forward
+            type: active
+          - key: Play
+            value: Play
+            type: active
+          - key: Select
+            value: Select/OK
+            type: active
+          - key: Left
+            value: Left
+            type: active
+          - key: Right
+            value: Right
+            type: active
+          - key: Down
+            value: Down
+            type: active
+          - key: Up
+            value: Up
+            type: active
+          - key: Back
+            value: Back
+            type: active
+          - key: InstantReplay
+            value: Instant Replay
+            type: active
+          - key: Info
+            value: Info
+            type: active
+          - key: Backspace
+            value: Backspace
+            type: active
+          - key: Search
+            value: Search
+            type: active
+          - key: Enter
+            value: Enter
+            type: active
+          - key: FindRemote
+            value: Find Remote
+            type: active
+          - key: VolumeDown
+            value: Volume Down
+            type: active
+          - key: VolumeMute
+            value: Mute
+            type: active
+          - key: VolumeUp
+            value: Volume Up
+            type: active
+          - key: PowerOff
+            value: Power Off
+            type: active
+        argumentType: string
+      state:
+        value: rokuKey.value
+        valueType: string
+        alternatives:
+          - key: Home
+            value: Home
+            type: active
+          - key: Rev
+            value: Reverse
+            type: active
+          - key: Fwd
+            value: Forward
+            type: active
+          - key: Play
+            value: Play
+            type: active
+          - key: Select
+            value: Select
+            type: active
+          - key: Left
+            value: Left
+            type: active
+          - key: Right
+            value: Right
+            type: active
+          - key: Down
+            value: Down
+            type: active
+          - key: Up
+            value: Up
+            type: active
+          - key: Back
+            value: Back
+            type: active
+          - key: InstantReplay
+            value: Instant Replay
+            type: active
+          - key: Info
+            value: Info
+            type: active
+          - key: Backspace
+            value: Backspace
+            type: active
+          - key: Search
+            value: Search
+            type: active
+          - key: Enter
+            value: Enter
+            type: active
+          - key: FindRemote
+            value: Find Remote
+            type: active
+          - key: VolumeDown
+            value: Volume Down
+            type: active
+          - key: VolumeMute
+            value: Mute
+            type: active
+          - key: VolumeUp
+            value: Volume Up
+            type: active
+          - key: PowerOff
+            value: Power Off
+            type: active
+    state: null
+automation:
+  conditions: []
+  actions:
+    - label: 'Roku Keypress Options:'
+      displayType: list
+      list:
+        alternatives:
+          - key: Home
+            value: Home
+            type: active
+          - key: Rev
+            value: Reverse
+            type: active
+          - key: Fwd
+            value: Forward
+            type: active
+          - key: Play
+            value: Play
+            type: active
+          - key: Select
+            value: Select
+            type: active
+          - key: Left
+            value: Left
+            type: active
+          - key: Right
+            value: Right
+            type: active
+          - key: Down
+            value: Down
+            type: active
+          - key: Up
+            value: Up
+            type: active
+          - key: Back
+            value: Back
+            type: active
+          - key: InstantReplay
+            value: Instant Replay
+            type: active
+          - key: Info
+            value: Info
+            type: active
+          - key: Backspace
+            value: Backspace
+            type: active
+          - key: Search
+            value: Search
+            type: active
+          - key: Enter
+            value: Enter
+            type: active
+          - key: FindRemote
+            value: Find Remote
+            type: active
+          - key: VolumeDown
+            value: Volume Down
+            type: active
+          - key: VolumeMute
+            value: Mute
+            type: active
+          - key: VolumeUp
+            value: Volume Up
+            type: active
+          - key: PowerOff
+            value: Power Off
+            type: active
+        command: selectKey
+        argumentType: string
+id: partyvoice23922.rokukeys
+version: 1
