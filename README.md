@@ -12,5 +12,5 @@ This driver is currently under development and test. Although the driver has ful
 - mediaPlayback Fast forward button not working
 - Selection lists in random order
 - info_changed lifecycle can be invoked multiple times with erroneous data from one preferenes Settings change
-- Driver restart lifecycle handler not called; instead info_changed is called
+- Driver restart lifecycle handler never invoked; instead info_changed is invoked for each device; inhibits proper device quiescence
 ```
