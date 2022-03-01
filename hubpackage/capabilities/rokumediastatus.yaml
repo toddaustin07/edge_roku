@@ -1,9 +1,10 @@
-id: partyvoice23922.rokucurrentapp
+id: partyvoice23922.rokumediastatus
 version: 1
 status: proposed
-name: rokucurrentapp
+name: rokumediastatus
+ephemeral: false
 attributes:
-  currentApp:
+  mediaStatus:
     schema:
       type: object
       properties:

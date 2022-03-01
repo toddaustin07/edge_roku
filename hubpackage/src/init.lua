@@ -18,21 +18,14 @@
   This driver is still in development; Edge platform beta socket bugs persist which render this driver unreliable as of 11/3/21
 
   Currently known issues:
-    - socket bugs:
-      runtime error: [string "socket"]:205: received data on non-existent socket: tcp_send_ready
-      runtime error: [string "cosock"]:296: cosock tried to call socket.select with no sockets and no timeout. this is a bug, please report it
     - tV capability not displaying
     - Fast forward button not working
     - Selection lists in random order
-    - Settings can be called multiple times with erroneous data
-    - Driver restart lifecycle handler not called; instead info_changed is called
     
-
   To Dos:
     - Comments
     - Re-factoring of functions (handlers especially)
     - Grouping same-category functions into separate Lua files
-    - Re-test when new Hub firmware is released (so far tested on 000.040.00006)
 
 --]]
 
@@ -41,7 +34,8 @@ local capabilities = require "st.capabilities"
 local Driver = require "st.driver"
 local cosock = require "cosock"
 local socket = require "cosock.socket"
-local http = require "socket.http"
+local http = cosock.asyncify "socket.http"      --non blocking calls
+--local http = require "socket.http"
 http.TIMEOUT = 3
 local ltn12 = require "ltn12"
 local log = require "log"
@@ -49,6 +43,7 @@ local log = require "log"
 -- Additional libraries
 local xml2lua = require "xml2lua"
 local xml_handler = require "xmlhandler.tree"
+local Thread = require "st.thread"
 
 -- UPnP library
 local upnp = require "UPnP"        
@@ -56,27 +51,13 @@ local upnp = require "UPnP"
 local TARGETDEVICESEARCH = "roku:ecp"
 
 -- Custom Capabilities
-local capdefs = require "capabilitydefs"
+local cap_power = capabilities["partyvoice23922.rokupower"]
+local cap_keypress = capabilities["partyvoice23922.rokukeys"]
+local cap_tvkeypress = capabilities["partyvoice23922.rokutvkeys"]
+local cap_mediastat = capabilities["partyvoice23922.rokumediastatus"]
+local cap_currapp = capabilities["partyvoice23922.rokucurrentapp"]
 
-local cap_power = capabilities.build_cap_from_json_string(capdefs.power_cap)
-capabilities["partyvoice23922.rokupower"] = cap_power
-
---local cap_power = capabilities["partyvoice23922.rokupower"]
-
-local cap_keypress = capabilities.build_cap_from_json_string(capdefs.keypress_cap)
-capabilities["partyvoice23922.rokukeys"] = cap_keypress
-
-local cap_tvkeypress = capabilities.build_cap_from_json_string(capdefs.tvkeypress_cap)
-capabilities["partyvoice23922.rokutvkeys"] = cap_tvkeypress
-
-local cap_mediastat = capabilities.build_cap_from_json_string(capdefs.mediastat_cap)
-capabilities["partyvoice23922.rokumediastatus"] = cap_mediastat
-
-local cap_currapp = capabilities.build_cap_from_json_string(capdefs.currapp_cap)
-capabilities["partyvoice23922.rokucurrentapp"] = cap_currapp
-
-
--- Recognized device model names and their associated Edge capability profile
+-- Profiles for TV vs non-TV devices
 
 local profiles = {
   ["isTV"] = "rokuTV.v1.1",
@@ -87,16 +68,14 @@ local profiles = {
 -- Temp UPnP metadata storage for newly created devices
 local newly_added = {}
 
-
 -- Other Global variables
 local rokuDriver
+local rediscovery_thread
 local lastinfochange = socket.gettime()
 local rokudevinfo = {}
-local cleardevice = {}
-local cleardevice2 = {}
-local DEFAULTREFRESHINTERVAL = 20
-local OVERRIDEINTERVAL = 30
-local interval_override = {}
+local mediabuttonpressed = {}
+local polling_freq = {}
+local last_command = {}
 local rediscover_timer
 local unfoundlist = {}
 local applists = {}
@@ -105,14 +84,18 @@ local devicestates = {}
 local tv_channel = 1
 local tv_volume = 0
 
+------------------------------------------------------------------------
 
-local function send_command(req_method, addr, command)
+local schedule_periodic_refresh                    -- forward reference
+
+-- Send HTTP requests to Roku devices
+local function send_command(req_method, addr, command, device)
 
   local responsechunks = {}
   
   local body, code, headers, status
   
-  log.info(string.format('Sending %s %s to %s', req_method, command, addr))
+  -- log.info(string.format('Sending %s %s to %s', req_method, command, addr))
   
    body, code, headers, status = http.request{
     method = req_method,
@@ -122,7 +105,7 @@ local function send_command(req_method, addr, command)
 
   local response = table.concat(responsechunks)
   
-  log.info(string.format("response code=<%s>, status=<%s>", code, status))
+  --log.info(string.format("response code=<%s>, status=<%s>", code, status))
   
   local returnstatus = 'unknown'
   
@@ -130,7 +113,7 @@ local function send_command(req_method, addr, command)
 
     if string.find(code, "closed") then
       log.warn ("Socket closed unexpectedly")
-      returnstatus = string.format("No %s response", protocol)
+      returnstatus = string.format("No response")
     elseif string.find(code, "refused") then
       log.warn("Connection refused: ", addr)
       returnstatus = "Refused"
@@ -146,6 +129,11 @@ local function send_command(req_method, addr, command)
       end
       
     else
+      if device then
+        last_command[device.id] = socket.gettime()
+        polling_freq[device.id] = 3
+        schedule_periodic_refresh(device, polling_freq[device.id])
+      end
       return true, response
       
     end
@@ -156,9 +144,10 @@ local function send_command(req_method, addr, command)
 end
 
 
+-- Send GET requests (query-type requests) that return XML data
 local function get_info(addr, command)
 
-  success, response = send_command('GET', addr, command)
+  success, response = send_command('GET', addr, command, nil)
 
   if success then
 
@@ -184,6 +173,8 @@ local function get_info(addr, command)
 
 end
 
+
+-- Return true if device is online, false if not
 local function is_online(device)
 
   local upnpdev = device:get_field('upnpdevice')
@@ -198,29 +189,32 @@ local function is_online(device)
 end
 
   
+-- Main function to refresh all Roku device states (power, media, app)
 local function refresh_all(device)
   
   local upnpdev = device:get_field('upnpdevice')
   local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
+  
+  log.info (string.format('Updating %s...', device.label))
   
   -- Get device status to check power
   
   local devicestatus = get_info(lanaddr, '/query/device-info')
   if devicestatus then
 
-    if failcount[device.device_network_id] > 2 then
+    if upnpdev.online == false then
       device:online()
       upnpdev.online = true
-      failcount[device.device_network_id] = 0 
-      interval_override[device.device_network_id] = false
+      failcount[device.id] = 0 
+      polling_freq[device.id] = device.preferences.freq
     end
     
     local powerstat = devicestatus['device-info']['power-mode']
-    log.info ('Power status:', powerstat)
+    log.info (string.format('\tPower status: %s', powerstat))
     
-    local lastvalue = devicestates[device.device_network_id]['power']
+    local lastvalue = devicestates[device.id]['power']
     if powerstat ~= lastvalue then
-      devicestates[device.device_network_id]['power'] = powerstat
+      devicestates[device.id]['power'] = powerstat
       
       if powerstat == 'PowerOn' then
         device:emit_event(cap_power.powerSwitch('On'))
@@ -229,12 +223,12 @@ local function refresh_all(device)
       end
     end
   else
-    failcount[device.device_network_id] = failcount[device.device_network_id] + 1
-    if failcount[device.device_network_id] == 2 then
+    failcount[device.id] = failcount[device.id] + 1
+    if failcount[device.id] == 3 then
       device:offline()
       upnpdev.online = false
     end
-    log.info ('No reponse from Roku; failure count =', failcount[device.device_network_id])
+    log.info ('No reponse from Roku; failure count =', failcount[device.id])
     return
     
   end
@@ -244,11 +238,11 @@ local function refresh_all(device)
   local mediastatus = get_info(lanaddr, '/query/media-player')
   if mediastatus then
     local mediastate = mediastatus.player._attr.state
-    log.info ('Media player state: ', mediastate)
+    log.info (string.format('\tMedia player state: %s', mediastate))
     
-    local lastvalue = devicestates[device.device_network_id]['mediaplayer']
-    if mediastate ~= lastvalue then
-      devicestates[device.device_network_id]['mediaplayer'] = mediastate
+    local lastvalue = devicestates[device.id]['mediaplayer']
+    if (mediastate ~= lastvalue) or mediabuttonpressed[device.id] then
+      devicestates[device.id]['mediaplayer'] = mediastate
     
       device:emit_event(cap_mediastat.mediaStatus(mediastate))
       
@@ -268,10 +262,12 @@ local function refresh_all(device)
       else
         log.error ('Unknown Roku Media Player state encountered:', mediastate)
       end
+      mediabuttonpressed[device.id] = false
     end
   else
     log.error ('Failed to get media player status')
     device:emit_event(cap_mediastat.mediaStatus(' '))
+    devicestates[device.id]['mediaplayer'] = ' '
   end
   
   -- Get Active App
@@ -284,21 +280,39 @@ local function refresh_all(device)
     else
       activeapp = appstatus['active-app'].app
     end
-    log.info ('Active App: ', activeapp)
+    log.info (string.format('\tActive App: %s', activeapp))
     
-    local lastvalue = devicestates[device.device_network_id]['activeapp']
+    local lastvalue = devicestates[device.id]['activeapp']
     if activeapp ~= lastvalue then
-      devicestates[device.device_network_id]['activeapp'] = activeapp
+      devicestates[device.id]['activeapp'] = activeapp
       device:emit_event(cap_currapp.currentApp(activeapp))
     end
   else
     log.error ('Failed to get active app')
     device:emit_event(cap_currapp.currentApp(' '))
+    devicestates[device.id]['activeapp'] = ' '
   end
 end
-        
 
-local function periodic_refresh()
+
+local periodic_refresh                          -- forward reference
+
+
+schedule_periodic_refresh = function(device, interval)
+
+  local refreshtimer = device:get_field('refreshtimer')
+  if refreshtimer then; rokuDriver:cancel_timer(refreshtimer); end
+  refreshtimer = device.thread:call_with_delay(interval, periodic_refresh, "Refresh timer")
+  device:set_field('refreshtimer', refreshtimer)
+  device:set_field('lastrefresh', socket.gettime())
+  log.debug (string.format('%s refresh scheduled in %d seconds', device.label, interval))
+
+end
+
+local schedule_rediscover                       -- forward reference
+        
+-- Called via timer to run periodic refreshes
+periodic_refresh = function()
 
   log.info('Running periodic refresh')
 
@@ -307,49 +321,42 @@ local function periodic_refresh()
   
   for _, device in ipairs(device_list) do
 
-    if device:get_field('lastrefresh') then        -- make sure device has been discovered & initialized
+    if polling_freq[device.id] ~= nil then        -- make sure device has been discovered & initialized
       local timesincelastrefresh = timenow - device:get_field('lastrefresh')
-      local refreshtimer = device:get_field('refreshtimer')
-      log.debug (string.format('Time since %s last refresh: %s', device.label, timesincelastrefresh))
+      --log.debug (string.format('Seconds since %s last refresh: %s', device.label, timesincelastrefresh))
 
-      local interval = device.preferences.freq
-
-      if interval_override[device.device_network_id] then
-        interval = OVERRIDEINTERVAL
-      end
-      
-      if timesincelastrefresh > interval then
+      if timesincelastrefresh > polling_freq[device.id] then
         refresh_all(device)
         
-        -- If device is offline and after 5 retries, force refresh interval to 30 seconds regardless of preferences
-        if (not is_online(device)) and (failcount[device.device_network_id] > 5) then
-          interval_override[device.device_network_id] = true
-          interval = OVERRIDEINTERVAL
-        end
+        if (is_online(device)) and (failcount[device.id] < 3) then
+          
+          if (timenow - last_command[device.id]) > 7 then
+            polling_freq[device.id] = device.preferences.freq
+          end
+          
+          schedule_periodic_refresh(device, polling_freq[device.id])
         
-        if refreshtimer then; rokuDriver:cancel_timer(refreshtimer); end
-        refreshtimer = rokuDriver:call_with_delay(interval, periodic_refresh, "Refresh timer")
-        device:set_field('refreshtimer', refreshtimer)
-        device:set_field('lastrefresh', timenow)
+        -- Device not responding; schedule for periodic rediscovery (could have changed IP addresses)  
+        else
+          schedule_rediscover(device, 20)
+          polling_freq[device.id] = nil
+        end
       end
     end
   end
 end
 
+
+-- Initialize periodic refresh timer according to interval preference
 local function init_periodic_refresh(device)
 
-  local refreshtimer = device:get_field('refreshtimer')
-  if refreshtimer then; rokuDriver:cancel_timer(refreshtimer); end
-  local interval = device.preferences.freq
-  if interval == nil then; interval = DEFAULTREFRESHINTERVAL; end
-  refreshtimer = rokuDriver:call_with_delay(interval, periodic_refresh, "Refresh timer")
-  device:set_field('refreshtimer', refreshtimer)
-  device:set_field('lastrefresh', socket.gettime())
+  polling_freq[device.id] = device.preferences.freq
+  schedule_periodic_refresh(device, device.preferences.freq)
 
 end
 
 -- Callback to handle UPnP device status & config changes; invoked by the UPnP library device monitor 
--- Not used in latest code since UPnP device monitoring not enabled
+-- ** Not used in latest code since UPnP device monitoring not enabled **
 local function status_changed_callback(device)
   
   -- 1.Examine upnp device metadata for important changes (online/offline status, bootid, configid, etc)
@@ -386,27 +393,31 @@ local function startup_device(device, upnpdev)
   device:online()
   upnpdev.online = true
   
-  failcount[device.device_network_id] = 0
-  devicestates[device.device_network_id] = {}
+  failcount[device.id] = 0
+  last_command[device.id] = socket.gettime() - 10
+  devicestates[device.id] = {}
+  mediabuttonpressed[device.id] = false
 
+
+  -- Get initial device states
   refresh_all(device)
   
-  -- Setup refresh timer
+  -- Setup periodic refresh timer
 
   init_periodic_refresh(device)
 
   -- Initialize Roku App list
   
-  if not applists[device.device_network_id] then
+  if not applists[device.id] then
     local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
     local rokuapplist = get_info(lanaddr, '/query/apps')
     if rokuapplist then
-      applists[device.device_network_id] = {}
+      applists[device.id] = {}
       for key, value in ipairs(rokuapplist.apps.app) do
         local record = { ["id"] = value._attr.id, ["name"] = value[1] }
-        table.insert(applists[device.device_network_id], record)
+        table.insert(applists[device.id], record)
       end
-      device:emit_event(capabilities.mediaPresets.presets(applists[device.device_network_id]))
+      device:emit_event(capabilities.mediaPresets.presets(applists[device.id]))
     end
   end
 
@@ -423,7 +434,7 @@ local function startup_device(device, upnpdev)
   
 end
 
-
+-- Send media control keypress commands to Roku
 local function issue_media_cmd(device, command)
 
   log.debug ('Issuing command to Roku:', command)
@@ -432,47 +443,29 @@ local function issue_media_cmd(device, command)
   local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
 
   if (command == 'stop') or (command == 'stopped') then
-    send_command('POST', lanaddr, '/keypress/play')
+    send_command('POST', lanaddr, '/keypress/play', device)
   
   elseif (command == 'pause') or (command == 'paused') then
-    send_command('POST', lanaddr, '/keypress/play')
+    send_command('POST', lanaddr, '/keypress/play', device)
   
   elseif (command == 'play') or (command == 'playing') then
-    send_command('POST', lanaddr, '/keypress/play')
+    send_command('POST', lanaddr, '/keypress/play', device)
   
   elseif (command == 'rewind') or (command == 'rewinding') then
-    send_command('POST', lanaddr, '/keypress/rev')
+    send_command('POST', lanaddr, '/keypress/rev', device)
   
   elseif (command == 'fastForward') or (command == 'fastForwarding') then
-    send_command('POST', lanaddr, '/keypress/fwd')
+    send_command('POST', lanaddr, '/keypress/fwd', device)
   
   end
-
-
 end
 
-local function clearkeyselect ()
-
-  if cleardevice then
-    cleardevice:emit_event(cap_keypress.rokuKey(' '))
-    cleardevice = nil
-  end
-  
-end
-
-local function cleartvkeyselect ()
-
-  if cleardevice2 then
-    cleardevice2:emit_event(cap_tvkeypress.rokuTVKey(' '))
-    cleardevice2 = nil
-  end
-  
-end
 
 ------------------------------------------------------------------------
 --	      SMARTTHINGS DEVICE CAPABILITY COMMAND HANDLERS
 ------------------------------------------------------------------------
 
+-- This function would be called by automations
 local function handle_power(driver, device, command)
 
   log.info ('Power switch command:', command.command)
@@ -480,19 +473,20 @@ local function handle_power(driver, device, command)
   if is_online(device) then
     local upnpdev = device:get_field('upnpdevice')
     local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
-    devicestates[device.device_network_id]['power'] = ''
+    devicestates[device.id]['power'] = ''
 
     if (command.command == 'powerOff') or (command.command == 'Off')then
-      send_command('POST', lanaddr, '/keypress/PowerOff')
+      send_command('POST', lanaddr, '/keypress/PowerOff', device)
     
     else
-      send_command('POST', lanaddr, '/keypress/PowerOn')
+      send_command('POST', lanaddr, '/keypress/PowerOn', device)
     end
   else
     device:emit_event(cap_power.powerSwitch((command.command == 'On') and 'Off' or 'On'))
   end
 end
 
+-- This function would be called by mobile app interaction
 local function handle_setpower(driver, device, command)
 
   log.info ('SET Power switch command:', command.command, command.args.state)
@@ -500,15 +494,15 @@ local function handle_setpower(driver, device, command)
   if is_online(device) then
     local upnpdev = device:get_field('upnpdevice')
     local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
-    devicestates[device.device_network_id]['power'] = ''
+    devicestates[device.id]['power'] = ''
 
     device:emit_event(cap_power.powerSwitch(command.args.state))
 
     if (command.args.state == 'Off') then
-      send_command('POST', lanaddr, '/keypress/PowerOff')
+      send_command('POST', lanaddr, '/keypress/PowerOff', device)
     
     else
-      send_command('POST', lanaddr, '/keypress/PowerOn')
+      send_command('POST', lanaddr, '/keypress/PowerOn', device)
     end
   else
     device:emit_event(cap_power.powerSwitch((command.args.state == 'On') and 'Off' or 'On'))
@@ -524,9 +518,8 @@ local function handle_selectkey(driver, device, command)
     local upnpdev = device:get_field('upnpdevice')
     local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
 
-    send_command('POST', lanaddr, '/keypress/' .. command.args.value)
-    cleardevice = device
-    driver:call_with_delay(2, clearkeyselect)
+    send_command('POST', lanaddr, '/keypress/' .. command.args.value, device)
+    device.thread:call_with_delay(2, function() device:emit_event(cap_keypress.rokuKey(' ')); end, 'clear keysel')
       
   else
     device:emit_event(cap_keypress.rokuKey(' ')) 
@@ -543,9 +536,8 @@ function handle_selecttvkey (driver, device, command)
     local upnpdev = device:get_field('upnpdevice')
     local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
 
-    send_command('POST', lanaddr, '/keypress/' .. command.args.value)
-    cleardevice2 = device
-    driver:call_with_delay(2, cleartvkeyselect)
+    send_command('POST', lanaddr, '/keypress/' .. command.args.value, device)
+    device.thread:call_with_delay(2, function() device:emit_event(cap_tvkeypress.rokuTVKey(' ')); end, 'clear tvkeysel')
       
   else
     device:emit_event(cap_tvkeypress.rokuTVKey(' ')) 
@@ -560,7 +552,7 @@ local function handle_preset(driver, device, command)
   if is_online(device) then
     local upnpdev = device:get_field('upnpdevice')
     local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
-    send_command('POST', lanaddr, '/launch/' .. tostring(command.args.presetId))
+    send_command('POST', lanaddr, '/launch/' .. tostring(command.args.presetId), device)
   end
 end
 
@@ -590,6 +582,8 @@ local function handle_mediacmd(driver, device, command)
                           ['stop'] = 'stopped'
                         }
 
+  mediabuttonpressed[device.id] = true
+
   if is_online(device) then
     device:emit_event(capabilities.mediaPlayback.playbackStatus(media_status[command.command]))
     local upnpdev = device:get_field('upnpdevice')
@@ -601,33 +595,43 @@ end
 
 
 -- Handle TV .. Not yet tested as tV capability not working in SmartThings
+-- TODO: How do we synch channel & volume values from Roku??
 local function handle_tvcmds (driver, device, command)
 
   log.info ('TV command:', command.command, command.args.value)
+  
+  local upnpdev = device:get_field('upnpdevice')
+  local lanaddr = upnpdev.ip .. ':' .. tostring(upnpdev.port)
   
   if command.command == 'channelUp' then
     if tv_channel < 200 then
       tv_channel = tv_channel + 1
     end
     device:emit_event(capabilities.tV.channel(tv_channel))
+    send_command('POST', lanaddr, '/keypress/ChannelUp', device)
+    
   elseif command.command == 'channelDown' then
     if tv_channel > 1 then
       tv_channel = tv_channel - 1
     end
     device:emit_event(capabilities.tV.channel(tv_channel))
+    send_command('POST', lanaddr, '/keypress/ChannelDown', device)
+    
   elseif command.command == 'volumeUp' then
     if tv_volume < 100 then
       tv_volume = tv_volume + 1
     end
     device:emit_event(capabilities.tV.volume(tv_volume))
+    send_command('POST', lanaddr, '/keypress/VolumeUp', device)
+    
   elseif command.command == 'volumeDown' then
     if tv_volume > 0 then
       tv_volume = tv_volume - 1
     end
     device:emit_event(capabilities.tV.volume(tv_volume))
+    send_command('POST', lanaddr, '/keypress/VolumeDown', device)
   end
 end
-
 
 
 ------------------------------------------------------------------------------------------
@@ -658,16 +662,36 @@ local function proc_rediscover()
                           callback(device, upnpdev)
                         end
                       end
-                    end
+                    end,
+                  true,       -- nonstrict
+                  false       -- reset
     )
   
      -- give discovery some time to finish
     socket.sleep(15)
     -- Reschedule this routine again if still unfound devices
     if next(unfoundlist) ~= nil then
-      rediscover_timer = rokuDriver:call_with_delay(30, proc_rediscover, 're-discover routine')
+      rediscover_timer = rediscovery_thread:call_with_delay(30, proc_rediscover, 're-discover routine')
+    else
+      rediscovery_thread:close()
     end
   end
+end
+
+
+schedule_rediscover = function(device, delay)
+  
+  if next(unfoundlist) == nil then
+    unfoundlist[device.device_network_id] = { ['device'] = device, ['callback'] = startup_device }
+    log.warn ('\tScheduling re-discover routine for later')
+    if not rediscovery_thread then
+      rediscovery_thread = Thread.Thread(rokuDriver, 'rediscover thread')
+    end
+    rediscover_timer = rediscovery_thread:call_with_delay(delay, proc_rediscover, 're-discover routine')
+  else
+    unfoundlist[device.device_network_id] = { ['device'] = device, ['callback'] = startup_device }
+  end
+
 end
 
 
@@ -685,18 +709,10 @@ local function device_init(driver, device)
   
   if upnpdev == nil then                    -- if nil, then this handler was called to initialize an existing device (eg driver reinstall)
     device:offline()
+
     -- Store device in unfoundlist table and schedule re-discovery routine
-    if next(unfoundlist) == nil then
-      unfoundlist[device.device_network_id] = { ['device'] = device, ['callback'] = startup_device }
-      log.warn ('\tScheduling re-discover routine for later')
-      rediscover_timer = rokuDriver:call_with_delay(5, proc_rediscover, 're-discover routine')
-    else
-      unfoundlist[device.device_network_id] = { ['device'] = device, ['callback'] = startup_device }
-    end
-      
-  else
-    -- nothing else needs to be done if device metadata already available (already handled in device_added)
-    log.debug (string.format('INIT handler: metadata already known for upnp uuid %s (%s)', device.device_network_id, device.label))
+    schedule_rediscover(device, 5)
+    
   end
 end
 
@@ -708,15 +724,15 @@ local function device_added (driver, device)
 
   -- get UPnP metadata that was squirreled away when device was created
   upnpdev = newly_added[id]
+  newly_added[id] = nil     -- we're done with it
   
   -- store TV indicator
   local isTV = rokudevinfo[device.device_network_id]['is-tv']
   if isTV == 'true' then; isTV = true; else isTV = false; end
   device:set_field('isTV', isTV, { ['persist'] = true })
   
+  -- Perform startup tasks
   startup_device(device, upnpdev)
-  
-  newly_added[id] = nil     -- we're done with it
   
 end
 
@@ -725,6 +741,14 @@ end
 local function device_doconfigure (_, device)
 
 	-- determined by developer
+
+end
+
+
+-- Called when device transferred in from another Driver
+local function driver_switched(driver, device)
+
+  log.info ('Device received from another driver')
 
 end
 
@@ -763,22 +787,16 @@ local function handler_infochanged(driver, device, event, args)
   
     if args.old_st_store.preferences.freq ~= device.preferences.freq then
       log.info ('Refresh interval changed to: ', device.preferences.freq)
-      local refreshtimer = device:get_field('refreshtimer')
-      if refreshtimer then
-        rokuDriver:cancel_timer(refreshtimer)
-      end
-      refreshtimer = rokuDriver:call_with_delay(device.preferences.freq, periodic_refresh, "Refresh timer")
-      device:set_field('refreshtimer', refreshtimer)
-      device:set_field('lastrefresh', timenow)
-    
+      init_periodic_refresh(device)
+      
     else
     
-      -- TEMPORARY CODE UNTIL PROPER DRIVER RESTART LIFECYCLE CALLS ARE WORKING
+      -- Assume driver is restarting - shutdown everything
       log.debug ('****** DRIVER RESTART ASSUMED ******')
     
       local refreshtimer = device:get_field('refreshtimer')
       if refreshtimer then; driver:cancel_timer(refreshtimer); end
-      log.debug ('\tRefresh timer canceled for ', device.label)
+      log.debug ('\tRefresh timer cancelled for ', device.label)
       
       if rediscover_timer then; driver:cancel_timer(rediscover_timer); end
         
@@ -788,46 +806,6 @@ local function handler_infochanged(driver, device, event, args)
     end
   end
   --end
-  
-  --[[
-  log.debug('OLD INFO:')
-  for key, value in pairs(args.old_st_store) do
-    log.debug(key, value)
-    if type(value) == 'table' then
-      for key2, value2 in pairs(value) do
-        log.debug('\t' .. key2, value2)
-        if type(value2) == 'table' then
-          for key3, value3 in pairs(value2) do
-            log.debug ('\t\t' .. key3, value3)
-          end
-        end
-      end
-    end
-  end
-  --]]
-  
-  --[[
-  log.debug('NEW INFO:')
-  for key, value in pairs(device) do
-    log.debug(key, value)
-    if type(value) == 'table' then
-      for key2, value2 in pairs(value) do
-        log.debug('\t' .. key2, value2)
-        if type(value2) == 'table' then
-          for key3, value3 in pairs(value2) do
-            log.debug ('\t\t' .. key3, value3)
-            if type(value3) == 'table' then
-              for key4, value4 in pairs(value3) do
-                log.debug ('\t\t\t' .. key4, value4)
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-  --]]
-  
 end
 
 
@@ -836,7 +814,7 @@ local function lan_info_changed_handler(driver, hub_ipv4)
 
   if driver.listen_ip == nil or hub_ipv4 ~= driver.listen_ip then
   
-		-- reset device monitoring and subscription event server
+		-- reset device monitoring and subscription event server            -- THIS NEEDS MORE WORK
     upnp.reset(driver)
   end
 end
@@ -857,6 +835,7 @@ local function discovery_handler(driver, _, should_continue)
   local repeat_count = 3
   local searchtarget = TARGETDEVICESEARCH
   local waittime = 3                          -- allow LAN devices 3 seconds to respond to discovery requests
+  local resetflag = true
 
   -- We'll limit our discovery to repeat_count to minimize unnecessary LAN traffic
 
@@ -877,7 +856,7 @@ local function discovery_handler(driver, _, should_continue)
                       found_devices[id] = true
 
                       -- Get device-info from Roku:
-                      --   This enables us to find out if it's a TV, and 
+                      --   This enables us to determine if it's a TV, and 
                       --   Create a device label that includes its friendly name & location
 
                       local devinfo = get_info(lanaddr, '/query/device-info')
@@ -933,12 +912,14 @@ local function discovery_handler(driver, _, should_continue)
                         log.warn(string.format("Discovered device not recognized (name: %s / model: %s)", name, modelnumber))
                       end
                     else
-                      --log.debug("Discovered device was already known")
+                      log.debug("Discovered device was already known")
                     end
-                  end
+                  end,
+                true,       -- nonstrict
+                resetflag   -- reset
     )
     --***************************************************************************
-    
+    resetflag = false
     repeat_count = repeat_count - 1
     if repeat_count > 0 then
       socket.sleep(2)                          -- avoid creating network storms
@@ -956,6 +937,7 @@ rokuDriver = Driver("rokuDriver", {
     init = device_init,
     added = device_added,
     infoChanged = handler_infochanged,
+    driverSwitched = driver_switched,
     doConfigure = device_doconfigure,
     deleted = device_removed,
     removed = device_removed,
@@ -972,7 +954,7 @@ rokuDriver = Driver("rokuDriver", {
       [cap_keypress.commands.selectKey.NAME] = handle_selectkey,
     },
     [cap_tvkeypress.ID] = {
-      [cap_tvkeypress.commands.selectTVKey.NAME] = handle_selecttvkey,
+      [cap_tvkeypress.commands.selectTVKey.NAME] = handle_selecttvkey,    -- not yet defined; not working
     },
     [capabilities.mediaPresets.ID] = {
       [capabilities.mediaPresets.commands.playPreset.NAME] = handle_preset,
@@ -994,6 +976,6 @@ rokuDriver = Driver("rokuDriver", {
   }
 })
 
-log.info ('Starting Roku Driver v0.1b')
+log.info ('Starting Roku Driver v0.3')
 
 rokuDriver:run()

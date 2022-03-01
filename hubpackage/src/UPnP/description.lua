@@ -24,11 +24,41 @@ local util = require 'UPnP.upnpcommon'
 
 local cosock = require "cosock"
 local socket = require "cosock.socket"
-local http = require "socket.http"
+local http = cosock.asyncify "socket.http" 
+--local http = require "socket.http"
 http.TIMEOUT = 3
 local ltn12 = require "ltn12"
 
 local log = require "log"
+
+
+-- This function removes lines beginning with '#' which can be present in Sonos device description XML
+local function scrubXML(data)
+
+  local retdata = data
+
+  local index1 = data:find('\n%s*#', 1)
+  
+  if index1 then
+  
+    local index2 = data:find('\n', index1 + 1, 'plaintext')
+    if index2 then
+    
+      print (string.format('Rogue data removed: <<%s>>', string.sub(data, index1 + 1, index2 - 1)))
+      local part1 = string.sub(data, 1, index1)
+      local part2 = string.sub(data, index2 + 1)
+      
+      retdata = scrubXML(part1 .. part2)
+
+    else
+      print ('FATEL ERROR: could not find end of line')
+    end
+  end
+
+  return retdata
+
+end
+
 
 local function getXML(targeturl)
 
@@ -64,13 +94,13 @@ local function getXML(targeturl)
     -- at the end of its `Text-Encoding: Chunked` HTTP message, it just closes the socket,
     -- so ignore closed errors
   elseif status ~= 200 then
-    log.error (string.format("[upnp] HTTP XML request to %s failed with error code %s", targeturl, tostring(status)))
+    log.warn (string.format("[upnp] HTTP XML request to %s failed with error code %s", targeturl, tostring(status)))
     return nil
   end
 
   if response ~= nil then
     
-    return xmlparse.parseXML(response)
+    return xmlparse.parseXML(scrubXML(response))
   
   else
     log.error ('[upnp] Nil response from description request to ' .. targeturl)

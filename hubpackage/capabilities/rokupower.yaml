@@ -2,6 +2,7 @@ id: partyvoice23922.rokupower
 version: 1
 status: proposed
 name: rokupower
+ephemeral: false
 attributes:
   powerSwitch:
     schema:

@@ -36,7 +36,8 @@ local multicast_port = 1900
 local listen_ip = "0.0.0.0"
 local listen_port = 0
 
-local EXPIRATIONCHECKTIME = 15
+local EXPIRATIONCHECKTIME = 10.2
+local expiration_timer              -- *****
 
 local watchtable = {}
 local initflag = false
@@ -44,10 +45,9 @@ local initflag = false
 
 local function build_msearch_target(devicetable)
 
-  --local searchtarget = 'uuid:' .. devicetable.uuid                    -- *****
-  local searchtarget = 'roku:ecp'                                       -- *****
+  local searchtarget = 'uuid:' .. devicetable.uuid
   
-  --log.debug ('[upnp] Monitor re-discovery search target: ', devicetable.description.device.friendlyName, searchtarget)
+  log.debug ('[upnp] Monitor re-discovery search target: ', devicetable.description.device.friendlyName, searchtarget)
   return searchtarget
 
 end  
@@ -65,32 +65,43 @@ local function check_expirations()
       
       if devicetable.expiration < t then
        
-        log.info (string.format('[upnp] Reconfirming Device %s is alive', devicetable.usn))
+        log.info (string.format('[upnp] Polling %s; last exp: %s', devicetable.usn, os.date("%I:%M:%S",devicetable.expiration)))
 
         devicetable._retries = devicetable._retries + 1
         
-        -- Try multicast rediscovery 2 times                            *****
-      
-        if devicetable._retries <= 2 then
-          log.debug (string.format('[upnp] Sending multicast re-discovery #%d to %s', devicetable._retries, devicetable.usn))
-          assert(u:sendto(util.create_msearch_msg(build_msearch_target(devicetable), 2), multicast_ip, multicast_port))
+        -- Retry unicast search message 2 times to try and get response
         
+        if devicetable._retries <= 2 then
+      
+          local port = devicetable.msearchport or multicast_port
+          log.debug (string.format('[upnp] Sending unicast discovery (attempt #%d) to %s:%s', devicetable._retries, devicetable.ip, port))
+          assert(u:sendto(util.create_msearch_msg(build_msearch_target(devicetable), 1), devicetable.ip, port))  
+
         else
-          devicetable.online = false
-          log.info (string.format('[upnp] Device %s is OFFLINE', devicetable.usn))
-          devicetable._changecallback(devicetable.stdevice)
-        end
+        
+          -- Unicast didn't yield a response, so now try multicast 3 times
+        
+          if devicetable._retries <= 5 then
+            log.debug (string.format('[upnp] Sending multicast discovery to %s (attempt #%d)', devicetable.st, devicetable._retries-2))
+            assert(u:sendto(util.create_msearch_msg(devicetable.st, 2), multicast_ip, multicast_port))
+          
+          else
+            devicetable.online = false
+            log.info (string.format('[upnp] Device %s is OFFLINE', devicetable.usn))
+            devicetable._changecallback(devicetable.stdevice)
+          end
+        end  
       end 
     else  
       -- Device is offline
       if devicetable._retries ~= -1 then                  -- _retries == -1 if device sent byebye message or retries already exhausted
         
-        -- Try multicast 2 more times (device could have new ip if it rebooted)  *****
+        -- Try multicast 3 more times (device could have new ip if it rebooted)
         devicetable._retries = devicetable._retries + 1
         
-        if (devicetable._retries <= 4) then
-          log.debug (string.format('[upnp] Sending multicast re-discovery #%d to %s', devicetable._retries, devicetable.usn))
-          assert(u:sendto(util.create_msearch_msg(build_msearch_target(devicetable), 2), multicast_ip, multicast_port)) 
+        if (devicetable._retries <= 8) then
+          log.debug (string.format('[upnp] Sending multicast discovery (retry #%d)', devicetable._retries))
+          assert(u:sendto(util.create_msearch_msg(devicetable.st, 2), multicast_ip, multicast_port)) 
         else
           devicetable._retries = -1
         end
@@ -168,10 +179,9 @@ local function update_state(headers, rip)
     
     for usn, devicetable in pairs(watchtable) do
      
-      --if string.find(id, devicetable.uuid, nil, 'plaintext') then     -- *****any usn containing the target device UUID is good enough
-      if id == devicetable.usn then  
+      if string.find(id, devicetable.uuid, nil, 'plaintext') then     -- any usn containing the target device UUID is good enough
         
-        -- Matching USN, validate Notify or Msearch Response fields *****
+        -- Matching UUID, validate Notify or Msearch Response fields
         
         if (headers["nts"] == 'ssdp:alive') or headers["st"] then      -- don't care what's in ST
         
@@ -181,21 +191,21 @@ local function update_state(headers, rip)
             local t = math.floor(socket.gettime())
             local priorexp = os.date("%I:%M:%S", devicetable.expiration)
             
-            --devicetable.expiration = t + seconds_to_expire *****
+            if devicetable._poll then                                   -- *****
+              devicetable.expiration = t + devicetable._poll
+            else
+              devicetable.expiration = t + seconds_to_expire            -- *****
+            end
             
-            -- to force expiration for more frequent polling ******
-            
-            local range = 10       -- random +/- range to set varied expiration
-            devicetable.expiration = t + 30 + math.floor(math.random() * range * 2 - range + .5)       -- ******
-           
             local newexp = os.date("%I:%M:%S", devicetable.expiration)
             
             if newexp ~= priorexp then
-              log.debug (string.format('[upnp] Device %s alive confirmed; next check at %s', devicetable.usn, newexp))
+              log.debug (string.format('[upnp] Device %s expiration updated TO: %s', devicetable.usn, newexp))
             end
             
-            if not devicetable.online then
-              back_online(devicetable, headers, ip, port)
+            if not devicetable.online or devicetable._monrestart then
+              back_online(devicetable, headers)                         -- ***** removed ip, port parms (not used)
+              devicetable._monrestart = nil
             end
             
             devicetable._retries = 0        -- retry counter needs to be reset here
@@ -223,10 +233,10 @@ end
   
 -- Channel Hander:  Receive and process discovery response messages
 local function watch_multicast(_, sock)
-
+  local data, rip
   repeat
 
-    local data, rip, _ = sock:receivefrom()
+    data, rip, _ = sock:receivefrom()
     
     if data and (rip ~= 'timeout') then
     
@@ -261,25 +271,43 @@ local function init(upnpdev)
   upnpdev.stdriver:register_channel_handler(m, watch_multicast, 'multicast')
   upnpdev.stdriver:register_channel_handler(u, watch_multicast, 'unicast')
   
-  upnpdev.stdriver:call_on_schedule(EXPIRATIONCHECKTIME, check_expirations, "Expiration check timer")
+  expiration_timer = upnpdev.stdriver:call_on_schedule(EXPIRATIONCHECKTIME, check_expirations, "Expiration check timer")   -- *****
   log.info ('[upnp] Periodic expiration checker scheduled')
 
+  watchtable = {}               -- *****
   initflag = true
   
 end
 
 
 -- Add a device to the watch table
-local function register(upnpdev, configchange_callback)
-
-  if not initflag then
-    init(upnpdev)
-  end
+local function register(upnpdev, configchange_callback, poll, restart)  -- *****
 
   log.info ('[upnp] Registering for monitoring: ' .. upnpdev.usn)
 
   upnpdev._retries = 0
   upnpdev._changecallback = configchange_callback
+  
+  if poll then
+    upnpdev._poll = tonumber(poll)
+    log.debug (string.format('[upnp] Polling option: %s seconds', poll))
+    
+    -- Force quick initial expiration check *****
+    upnpdev.expiration = math.floor(socket.gettime() + math.floor(math.random() * 10 + .5))
+  else
+    upnpdev._poll = nil
+  end
+  
+  if restart == true then
+    upnpdev._monrestart = true              -- *****this will force a status change callback for monitoring restarts
+    log.debug(string.format('[upnp] Restart option= %s', restart))
+  else
+    upnpdev._monrestart = nil
+  end
+
+  if not initflag then
+    init(upnpdev)
+  end
 
   watchtable[upnpdev.usn] = upnpdev
 
@@ -304,6 +332,7 @@ local function shutdown(driver)
   u:close()
 	initflag = false
   watchtable = {}
+  driver:cancel_timer(expiration_timer)             -- *****
   
   log.info ('[upnp] Monitor function shutdown')
 

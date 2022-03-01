@@ -21,11 +21,12 @@ metadata:
   mnmn: SmartThingsCommunity
   ocfDeviceType: oic.d.tv
 preferences:
-  - title: "Refresh Interval"
+  - title: "Idle Refresh Interval"
     name: freq
     description: Refresh interval in seconds
     required: false
     preferenceType: integer
     definition:
-      minimum: 3
+      minimum: 5
+      maximum: 86400
       default: 20

@@ -45,7 +45,7 @@ local function process_response(resp, types)
   local match = false
   
   for _, resptype in ipairs(types) do
-		if string.find(prefix, resptype, nil, "plaintext") ~= nil then
+		if string.find(prefix, resptype, 1, "plaintext") ~= nil then        -- *****
 			match = true
 		end
   end
@@ -77,11 +77,15 @@ local function set_meta_attrs(deviceobj, headers)
   deviceobj.location = loc
   deviceobj.ip = ip
   deviceobj.port = port
-  
-  if not deviceobj.description.URLBase then
-    deviceobj.URLBase = string.match(headers['location'], '^(http://[%d.:]*)')
+
+  if deviceobj.description then                                         -- *****
+    if not deviceobj.description.URLBase then
+      deviceobj.URLBase = string.match(headers['location'], '^(http://[%d.:]*)')
+    else
+      deviceobj.URLBase = deviceobj.description.URLBase
+    end
   else
-    deviceobj.URLBase = deviceobj.description.URLBase
+    deviceobj.URLBase = string.match(headers['location'], '^(http://[%d.:]*)')
   end
   
   deviceobj.bootid = headers["bootid.upnp.org"]
@@ -168,7 +172,7 @@ local function tablefind(t, path)
 end
 
 local function is_array(t)
-
+  if type(t) ~= "table" then return false end
   local i = 0
   for _ in pairs(t) do
     i = i + 1

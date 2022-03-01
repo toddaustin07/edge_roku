@@ -2,6 +2,7 @@ id: partyvoice23922.rokutvkeys
 version: 1
 status: proposed
 name: rokutvkeys
+ephemeral: false
 attributes:
   rokuTVKey:
     schema:

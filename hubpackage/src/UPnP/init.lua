@@ -61,41 +61,46 @@ end
 --  if uuid not given, then default to upnpdev.uuid
 local function devinfo(upnpdev, uuid)
 
-  if not uuid then
-    uuid = upnpdev.uuid
-  end
+  if upnpdev.description then
 
-  local _uuid = 'uuid:' .. uuid
+    if not uuid then
+      uuid = upnpdev.uuid
+    end
 
-  if upnpdev.description.device.UDN == _uuid then
-  
-    return upnpdev.description.device
-  
-  else
-  
-    if #upnpdev.description.device.subdevices > 0 then
+    local _uuid = 'uuid:' .. uuid
+
+    if upnpdev.description.device.UDN == _uuid then
     
-      for _, subdev in ipairs(upnpdev.description.device.subdevices) do
-        if subdev.UDN == _uuid then
-          return subdev
-        end
-          
-        if subdev.subdevices then
-        
-          for _, subsubdev in ipairs(subdev.subdevices) do
-            if subsubdev.UDN == _uuid then
-              return subsubdev
-            end
+      return upnpdev.description.device
+    
+    else
+    
+      if #upnpdev.description.device.subdevices > 0 then
+      
+        for _, subdev in ipairs(upnpdev.description.device.subdevices) do
+          if subdev.UDN == _uuid then
+            return subdev
           end
+            
+          if subdev.subdevices then
           
+            for _, subsubdev in ipairs(subdev.subdevices) do
+              if subsubdev.UDN == _uuid then
+                return subsubdev
+              end
+            end
+            
+          end
         end
       end
     end
+
+    log.error ('[upnp] devinfo: Unable to find matching UDN')
+  else
+    log.warn('[upnp] devinfo: No description metadata available')
   end
-
-  log.error ('[upnp] devinfo: Unable to find matching UDN')
+  
   return nil
-
 end
 
 upnpDevice_prototype = {
@@ -103,8 +108,8 @@ upnpDevice_prototype = {
   link(self, driver, device)
     end,
 
-    monitor = function (self, configchange_callback)
-  return(watcher.register(self, configchange_callback))
+    monitor = function (self, configchange_callback, poll, restart)
+  return(watcher.register(self, configchange_callback, poll, restart))  --*****
     end,
     
     unregister = function (self)
@@ -175,10 +180,18 @@ end
 
 
 -- Determine which discovery responses to consider legit
-local function validate_response(headers, target, rip)
+local function validate_response(headers, target, rip, nonstrict)
 
-  
   local usn = headers["usn"]
+  
+  if not usn then                                                       -- *****
+    log.error(string.format("[upnp] Discovery response from %s has no USN in headers:", rip))
+    for key, value in pairs(headers) do
+      log.debug (string.format('\t%s : %s', key, value))
+    end
+    return false
+  end
+  
   local loc = headers["location"]
   
   local ip = loc:match("http://([^,/:]+)")
@@ -189,10 +202,11 @@ local function validate_response(headers, target, rip)
     log.warn ("[upnp] ", rip, "~=", ip)
     
   elseif not usn:match("^uuid") then
-    log.debug(string.format('[upnp] Invalid USN returned from %s: "%s"', ip, usn))
+    log.warn(string.format('[upnp] Invalid USN returned from %s: "%s"', ip, usn))
   
   elseif ip and port and usn and not ids_found[usn] then
     ids_found[usn] = true
+    log.debug ('New response from:', rip, usn)
 
     -- Make sure that returned 'ST' header value is what was requested
 
@@ -211,10 +225,12 @@ local function validate_response(headers, target, rip)
       if target == st_val then
         is_correct_response = true
       end
-    else                                                                -- *****
-      if target == st_val then                                          -- *****
-        is_correct_response = true                                      -- *****
-      end                                                               -- *****
+    else  
+      if nonstrict == true then                                         -- *****
+        if target == st_val then                                        -- *****
+          is_correct_response = true                                    -- *****
+        end                                                             -- *****
+      end
     end
     
     if is_correct_response then
@@ -230,7 +246,7 @@ end
 
 
 -- build the device info table for discovered device
-local function build_device_object(headers, ip, port)
+local function build_device_object(headers)                             -- ***** removed ip/port parms (not used)
 
   local devloc = headers['location']
   local deviceobj = {}
@@ -266,53 +282,56 @@ local function build_device_object(headers, ip, port)
   end
     
   if meta then
-  
     deviceobj.description = meta
-
-    -- add additional important meta data to device table
-   
-    deviceobj.usn = headers['usn']
-    local uuid = deviceobj.usn:match("uuid:([^,::]+)")
-    
-    deviceobj.uuid = uuid
-    deviceobj.urn = deviceobj.usn:match("::urn:([^/]+)")
-
-    util.set_meta_attrs(deviceobj, headers)
-    
-    deviceobj.online = true
-    
-    local seconds_to_expire = tonumber(string.match(headers["cache-control"], '%d+'))
-    --deviceobj.expiration = math.floor(socket.gettime()) + seconds_to_expire *****
-    
-    -- >>>> for more frequent polling *****
-    local range = 10
-    deviceobj.expiration = math.floor(socket.gettime()) + 30 + math.floor(math.random() * range * 2 - range + .5)
-    
-    return deviceobj
-    
-  else
+  else                                                                  -- *****
     log.warn ('[upnp] No device description XML available from ' .. headers['location']) 
+    deviceobj.description = nil
   end
 
-  return nil
+  -- add additional important meta data to device table
+ 
+  deviceobj.usn = headers['usn']
+  local uuid = deviceobj.usn:match("uuid:([^,::]+)")
+  
+  deviceobj.uuid = uuid
+  deviceobj.urn = deviceobj.usn:match("::urn:([^/]+)")
+  deviceobj.st = headers['st']                                          -- ***** save returned search target
 
+  util.set_meta_attrs(deviceobj, headers)
+  
+  deviceobj.online = true
+  
+  local seconds_to_expire = tonumber(string.match(headers["cache-control"], '%d+'))
+  deviceobj.expiration = math.floor(socket.gettime()) + seconds_to_expire
+  
+  return deviceobj
+    
 end
 
 
 -- Use multicast to search for and discover devices
-local function discover (target, waitsecs, callback)
+local function discover (target, waitsecs, callback, nonstrict, reset)  -- *****
 
 	if not target or not waitsecs or not callback then
 		log.error ('[upnp] Missing discover function argument(s)')
 		return false
 	end
   
-  --target = validate_target(target)                                    ******
+  if nonstrict == nil then; nonstrict = false; end
+  if reset == nil then; reset = false; end
+  
+  log.debug (string.format('[upnp] Discovery parms: nonstrict=%s, reset=%s', nonstrict, reset))
+  
+  if nonstrict == false then                                            -- *****
+    target = validate_target(target)                                    -- *****
+  end
     
   if not target then
     log.error ('[upnp] Invalid search target:', target)
     return false
   end
+  
+  if reset then; ids_found = {}; end                                    -- *****
 
   local multicast_ip = "239.255.255.250"
   local multicast_port = 1900
@@ -323,15 +342,15 @@ local function discover (target, waitsecs, callback)
   
   assert(s:setsockname(listen_ip, listen_port), "discovery socket setsockname")
 
-  local timeouttime = socket.gettime() + waitsecs + .5 -- + 1/2 for network delay
-  
   local number_found = 0
 
   -- Send MSEARCH request to multicast ip:port
 
   assert(s:sendto(util.create_msearch_msg(target, waitsecs), multicast_ip, multicast_port))
-  
+
   -- Wait for MSEARCH responses
+
+  local timeouttime = socket.gettime() + waitsecs + .5 -- + 1/2 for network delay
 
   while true do
     local time_remaining = math.max(0, timeouttime-socket.gettime())
@@ -345,10 +364,9 @@ local function discover (target, waitsecs, callback)
       
       if headers then
       
-        local valid = validate_response(headers, target, rip)
+        local valid = validate_response(headers, target, rip, nonstrict)
         
         if valid then 
-          --log.debug ("[upnp] Valid discovery response from: " .. rip)     
           number_found = number_found + 1
           
           -- Build the upnp device object (including description)
@@ -361,6 +379,8 @@ local function discover (target, waitsecs, callback)
             
           end
         end
+      else
+        log.debug ('[upnp] Invalid headers from:', rip)
       end
     
     elseif rip == "timeout" then
