@@ -1,0 +1,463 @@
+{
+    "dashboard": {
+        "states": [],
+        "actions": []
+    },
+    "detailView": [
+        {
+            "label": "{{i18n.label}}",
+            "displayType": "list",
+            "list": {
+                "command": {
+                    "name": "selectTVKey",
+                    "alternatives": [
+                        {
+                            "key": "ChannelUp",
+                            "value": "Channel Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "ChannelDown",
+                            "value": "Channel Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeUp",
+                            "value": "Volume Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeDown",
+                            "value": "Volume Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeMute",
+                            "value": "Mute",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI1",
+                            "value": "HDMI 1",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI2",
+                            "value": "HDMI 2",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI3",
+                            "value": "HDMI 3",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI4",
+                            "value": "HDMI 4",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputAV1",
+                            "value": "AV1",
+                            "type": "active"
+                        },
+                        {
+                            "key": "PowerOn",
+                            "value": "Power On",
+                            "type": "active"
+                        },
+                        {
+                            "key": "PowerOff",
+                            "value": "Power Off",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Home",
+                            "value": "Home",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Rev",
+                            "value": "Reverse",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Fwd",
+                            "value": "Forward",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Play",
+                            "value": "Play",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Select",
+                            "value": "Select/OK",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Left",
+                            "value": "Left",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Right",
+                            "value": "Right",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Down",
+                            "value": "Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Up",
+                            "value": "Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Back",
+                            "value": "Back",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InstantReplay",
+                            "value": "Instant Replay",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Info",
+                            "value": "Info",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Backspace",
+                            "value": "Backspace",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Search",
+                            "value": "Search",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Enter",
+                            "value": "Enter",
+                            "type": "active"
+                        },
+                        {
+                            "key": "FindRemote",
+                            "value": "Find Remote",
+                            "type": "active"
+                        }
+                    ],
+                    "argumentType": "string"
+                },
+                "state": {
+                    "value": "rokuTVKey.value",
+                    "valueType": "string",
+                    "alternatives": [
+                        {
+                            "key": "ChannelUp",
+                            "value": "Channel Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "ChannelDown",
+                            "value": "Channel Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeUp",
+                            "value": "Volume Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeDown",
+                            "value": "Volume Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeMute",
+                            "value": "Mute",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI1",
+                            "value": "HDMI 1",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI2",
+                            "value": "HDMI 2",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI3",
+                            "value": "HDMI 3",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI4",
+                            "value": "HDMI 4",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputAV1",
+                            "value": "AV1",
+                            "type": "active"
+                        },
+                        {
+                            "key": "PowerOn",
+                            "value": "Power On",
+                            "type": "active"
+                        },
+                        {
+                            "key": "PowerOff",
+                            "value": "Power Off",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Home",
+                            "value": "Home",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Rev",
+                            "value": "Reverse",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Fwd",
+                            "value": "Forward",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Play",
+                            "value": "Play",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Select",
+                            "value": "Select/OK",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Left",
+                            "value": "Left",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Right",
+                            "value": "Right",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Down",
+                            "value": "Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Up",
+                            "value": "Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Back",
+                            "value": "Back",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InstantReplay",
+                            "value": "Instant Replay",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Info",
+                            "value": "Info",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Backspace",
+                            "value": "Backspace",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Search",
+                            "value": "Search",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Enter",
+                            "value": "Enter",
+                            "type": "active"
+                        },
+                        {
+                            "key": "FindRemote",
+                            "value": "Find Remote",
+                            "type": "active"
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "automation": {
+        "conditions": [],
+        "actions": [
+            {
+                "label": "Roku TV Keypress Options",
+                "displayType": "list",
+                "list": {
+                    "alternatives": [
+                        {
+                            "key": "ChannelUp",
+                            "value": "Channel Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "ChannelDown",
+                            "value": "Channel Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeUp",
+                            "value": "Volume Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeDown",
+                            "value": "Volume Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "VolumeMute",
+                            "value": "Mute",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI1",
+                            "value": "HDMI 1",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI2",
+                            "value": "HDMI 2",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI3",
+                            "value": "HDMI 3",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputHDMI4",
+                            "value": "HDMI 4",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InputAV1",
+                            "value": "AV1",
+                            "type": "active"
+                        },
+                        {
+                            "key": "PowerOn",
+                            "value": "Power On",
+                            "type": "active"
+                        },
+                        {
+                            "key": "PowerOff",
+                            "value": "Power Off",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Home",
+                            "value": "Home",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Rev",
+                            "value": "Reverse",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Fwd",
+                            "value": "Forward",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Play",
+                            "value": "Play",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Select",
+                            "value": "Select/OK",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Left",
+                            "value": "Left",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Right",
+                            "value": "Right",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Down",
+                            "value": "Down",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Up",
+                            "value": "Up",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Back",
+                            "value": "Back",
+                            "type": "active"
+                        },
+                        {
+                            "key": "InstantReplay",
+                            "value": "Instant Replay",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Info",
+                            "value": "Info",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Backspace",
+                            "value": "Backspace",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Search",
+                            "value": "Search",
+                            "type": "active"
+                        },
+                        {
+                            "key": "Enter",
+                            "value": "Enter",
+                            "type": "active"
+                        },
+                        {
+                            "key": "FindRemote",
+                            "value": "Find Remote",
+                            "type": "active"
+                        }
+                    ],
+                    "command": "selectTVKey",
+                    "argumentType": "string"
+                }
+            }
+        ]
+    },
+    "id": "partyvoice23922.rokutvkeys2",
+    "version": 1
+}

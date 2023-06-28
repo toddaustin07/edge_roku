@@ -66,6 +66,9 @@ detailView:
           - key: VolumeUp
             value: Volume Up
             type: active
+          - key: PowerOn
+            value: Power On
+            type: active
           - key: PowerOff
             value: Power Off
             type: active
@@ -130,6 +133,9 @@ detailView:
             type: active
           - key: VolumeUp
             value: Volume Up
+            type: active
+          - key: PowerOn
+            value: Power On
             type: active
           - key: PowerOff
             value: Power Off
@@ -198,6 +204,9 @@ automation:
             type: active
           - key: VolumeUp
             value: Volume Up
+            type: active
+          - key: PowerOn
+            value: Power On
             type: active
           - key: PowerOff
             value: Power Off

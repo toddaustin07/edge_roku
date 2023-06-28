@@ -1,0 +1,32 @@
+name: rokustick.v1.3
+components:
+- id: main
+  capabilities:
+    - id: partyvoice23922.rokupower
+      version: 1
+    - id: partyvoice23922.rokumediastatus
+      version: 1
+    - id: partyvoice23922.rokucurrentapp
+      version: 1
+    - id: partyvoice23922.rokukeys
+      version: 1
+    - id: mediaPresets
+      version: 1
+    - id: mediaPlayback
+      version: 1
+  categories:
+    - name: Television
+metadata:
+  vid: 393ea4d4-4cb0-3e18-ac6a-5178358b9e42
+  mnmn: SmartThingsCommunity
+  ocfDeviceType: oic.d.tv
+preferences:
+  - title: "Idle Refresh Interval"
+    name: freq
+    description: Refresh interval in seconds
+    required: false
+    preferenceType: integer
+    definition:
+      minimum: 5
+      maximum: 86400
+      default: 20

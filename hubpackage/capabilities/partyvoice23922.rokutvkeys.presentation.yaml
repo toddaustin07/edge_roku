@@ -39,6 +39,9 @@ detailView:
           - key: InputAV1
             value: AV1
             type: active
+          - key: PowerOn
+            value: Power On
+            type: active
           - key: PowerOff
             value: Power Off
             type: active
@@ -124,6 +127,9 @@ detailView:
             type: active
           - key: InputAV1
             value: AV1
+            type: active
+          - key: PowerOn
+            value: Power On
             type: active
           - key: PowerOff
             value: Power Off
@@ -213,6 +219,9 @@ automation:
             type: active
           - key: InputAV1
             value: AV1
+            type: active
+          - key: PowerOn
+            value: Power On
             type: active
           - key: PowerOff
             value: Power Off

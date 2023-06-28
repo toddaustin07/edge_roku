@@ -338,15 +338,27 @@ local function discover (target, waitsecs, callback, nonstrict, reset)  -- *****
   local listen_ip = "0.0.0.0"
   local listen_port = 0
   
-  local s = assert(socket.udp(), "create discovery socket")
+  local s, serr = socket.udp()
+	if s == nil then
+		log.error('[upnp] Failed to open UDP socket:', serr)
+		return
+	end
   
-  assert(s:setsockname(listen_ip, listen_port), "discovery socket setsockname")
+  local sockret, snerr = s:setsockname(listen_ip, listen_port)
+	if sockret == nil then
+    log.error(string.format('[upnp] Failed to bind socket to %s:%s: %s', listen_ip, listen_port, snerr))
+    return
+  end
 
   local number_found = 0
 
   -- Send MSEARCH request to multicast ip:port
 
-  assert(s:sendto(util.create_msearch_msg(target, waitsecs), multicast_ip, multicast_port))
+  local sendret, senderr = s:sendto(util.create_msearch_msg(target, waitsecs), multicast_ip, multicast_port)
+	if sendret == nil then
+    log.error('[upnp] Failed to send MSEARCH multicast:', senderr)
+    return
+  end
 
   -- Wait for MSEARCH responses
 

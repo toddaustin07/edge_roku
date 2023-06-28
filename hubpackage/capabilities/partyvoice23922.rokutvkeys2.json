@@ -1,0 +1,41 @@
+{
+    "id": "partyvoice23922.rokutvkeys2",
+    "version": 1,
+    "status": "proposed",
+    "name": "rokutvkeys2",
+    "ephemeral": false,
+    "attributes": {
+        "rokuTVKey": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string",
+                        "maxLength": 20
+                    }
+                },
+                "additionalProperties": false,
+                "required": [
+                    "value"
+                ]
+            },
+            "setter": "selectTVKey",
+            "enumCommands": []
+        }
+    },
+    "commands": {
+        "selectTVKey": {
+            "name": "selectTVKey",
+            "arguments": [
+                {
+                    "name": "value",
+                    "optional": false,
+                    "schema": {
+                        "type": "string",
+                        "maxLength": 20
+                    }
+                }
+            ]
+        }
+    }
+}
