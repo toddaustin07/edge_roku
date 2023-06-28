@@ -11,7 +11,7 @@ This driver provides local LAN control and monitoring of Roku devices including 
 * Send specific Roku remote keypress commands
 * Control media playback
 * Go to a configured Roku channel (i.e. "favorites")
-* Invoke any of the above through automations
+* Invoke any of the above Roku commands through automations
 
 ### Pre-requisites:
 * SmartThings Hub
