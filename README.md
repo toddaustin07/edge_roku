@@ -28,7 +28,7 @@ Once installed to the hub, using the SmartThings mobile app, perform an *Add dev
 Device Settings can be used to set the device status refresh interval in seconds. Default is 20 seconds.
 
 ## Currently known issues
-- GUI TV controls not available:  SmartThings tV capability presentation definition does not exist
+- Discovery of devices may take some time; could be hub caching issue of SSDP requests
 
 
 
