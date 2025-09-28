@@ -1,5 +1,5 @@
 --[[
-  Copyright 2021, 2022, 2023 Todd Austin
+  Copyright 2021-2025 Todd Austin
 
   Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
   except in compliance with the License. You may obtain a copy of the License at:
@@ -15,10 +15,8 @@
   
   SmartThings Edge driver to support Roku devices - both sticks and TVs
   
-  This driver is still in development; Edge platform beta socket bugs persist which render this driver unreliable as of 11/3/21
-
   Currently known issues:
-    - tV capability not displaying
+    - tV capability not displaying (this is has been deprecated anyway as of 2025)
     - Selection lists in random order
     
   To Dos:
@@ -91,6 +89,18 @@ local REDISCOVER_TIME_TV = 15
 
 ------------------------------------------------------------------------
 
+local function smartthings_device_offline(device)
+
+  -- Leave Roku TV devices online since they power on and off normally
+
+  if device:get_field('isTV') == false then
+    device:offline()
+  else
+    device:emit_event(cap_power.powerSwitch('Off'))
+  end
+
+end
+
 local schedule_periodic_refresh                    -- forward reference
 
 -- Send HTTP requests to Roku devices
@@ -144,6 +154,9 @@ local function send_command(req_method, addr, command, device)
     end
   end
 
+  if device then
+    smartthings_device_offline(device)
+  end
   return false, returnstatus
 
 end
@@ -221,6 +234,8 @@ local function refresh_rokustates(device)
     
     local powerstat = devicestatus['device-info']['power-mode']
     log.info (string.format('\tPower status: %s', powerstat))
+    -- NOTE:  Roku TV will be "DisplayOff" instead of "PowerOff" for about 15 minutes after turning off, during 
+    --   which time the user can still turn it back on again via the Smartthings device.
     
     local lastvalue = devicestates[device.id]['power']
     if powerstat ~= lastvalue then
@@ -232,10 +247,13 @@ local function refresh_rokustates(device)
         device:emit_event(cap_power.powerSwitch('Off'))
       end
     end
+
   else
     failcount[device.id] = failcount[device.id] + 1
+  
     if failcount[device.id] == MAXFAILS then
-      device:offline()
+    
+      smartthings_device_offline(device)
       upnpdev.online = false
     end
     log.info (string.format('No response from Roku; failure count=%d', failcount[device.id]))
@@ -376,7 +394,7 @@ local function status_changed_callback(device)
     local refreshtimer = device:get_field('refreshtimer')
     if refreshtimer then; rokuDriver:cancel_timer(refreshtimer); end
     
-    device:offline()
+    smartthings_device_offline(device)
     
   end
 end
@@ -486,7 +504,9 @@ local function handle_power(driver, device, command)
   end
 end
 
--- This function would be called by mobile app interaction
+-- This function would be called by mobile app interaction.  NOTE: attempting to turn on a Roku TV that is
+--  powered off longer than 13-15 minutes will result in a network error message to the user (since we now 
+--  don't set the device to offline state when it is powered off and not reachable)
 local function handle_setpower(driver, device, command)
 
   log.info ('SET Power switch command:', command.command, command.args.state)
@@ -641,7 +661,7 @@ local function proc_rediscover()
 
   if next(unfoundlist) ~= nil then
   
-    log.debug ('Running periodic re-discovery process for uninitialized devices:')
+    log.debug ('Running periodic re-discovery process for offline or uninitialized devices:')
     for device_network_id, table in pairs(unfoundlist) do
       log.debug (string.format('\t%s (%s)', device_network_id, table.device.label))
     end
@@ -706,7 +726,7 @@ end
 
 -- Lifecycle handler to initialize existing devices AND newly discovered devices
 local function device_init(driver, device)
-  
+    
   log.debug(string.format("INIT handler for: <%s (%s)>", device.id, device.label))
   
   if device:get_field('isTV') then
@@ -1011,6 +1031,6 @@ rokuDriver = Driver("rokuDriver", {
   }
 })
 
-log.info ('Starting Roku Driver v1.2')
+log.info ('Starting Roku Driver v1.4')
 
 rokuDriver:run()

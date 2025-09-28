@@ -1,4 +1,4 @@
-name: 'Roku Driver v1.0'
+name: 'Roku Driver v1.4'
 packageKey: 'roku_v0.1b'
 permissions:
     lan: {}
